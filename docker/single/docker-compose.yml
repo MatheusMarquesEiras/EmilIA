@@ -5,7 +5,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ../backend/backup:/root/.ollama
+      - ../storage/backup:/root/.ollama
     deploy:
       resources:
         reservations:
