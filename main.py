@@ -64,12 +64,13 @@ _aux_model = 'granite3.2-vision'
 @dataclass
 class UserMessage:
     message: str
+    tag: str
     img: Optional[str] = None
 
     def format(self):
         data =  {
             'role': 'user',
-            'content': f"[Professor] {self.message}"
+            'content': f"{self.tag} {self.message}"
         }
     
         if self.img is not None:
@@ -237,7 +238,7 @@ class MainServer:
             log_error(f"Erro ao baixar modelos: {e}")
     
     def generate_test(self):
-        user_message = UserMessage(message='[Professor] mensagem para testar se você esta funcionando responda se sim ou não')
+        user_message = UserMessage(message='[Test] mensagem para testar se você esta funcionando responda se sim ou não')
         log_info(f'Aquecendo modelo com: "{user_message.message}"')
         list_tkns = []
         messages_to_send = [self.sysMessage.format(), user_message.format()]
@@ -281,7 +282,6 @@ class MainServer:
                     if tool_name == 'pass_turn':
                         used_pass_turn = True
                         log_tool(tool_name, "(Silêncio)")
-                        # Não precisamos executar nada complexo para pass_turn
                         tool_obj = Tool("") 
                         self.messages.append(tool_obj.format())
                         continue
@@ -375,7 +375,7 @@ class RealTimeSTT:
         self.CHANNELS = 1
         self.RATE = 16000
         
-        self.ENERGY_THRESHOLD = 800
+        self.ENERGY_THRESHOLD = 300
         self.PAUSE_THRESHOLD = 0.8
         self.SILENCE_CHUNKS = int(self.PAUSE_THRESHOLD * self.RATE / self.CHUNK)
         
