@@ -128,7 +128,6 @@ class AuxServer:
             'subtract_numbers': self.subtract_numbers,
             'multiply_numbers': self.multiply_numbers,
             'take_screenshot': self.take_screenshot,
-            'web_search': self.web_search,
         }
 
         self.tools = [
@@ -137,7 +136,6 @@ class AuxServer:
             self.subtract_numbers,
             self.multiply_numbers,
             self.take_screenshot,
-            self.web_search,
         ]
 
     def get_tool_list(self):
@@ -157,30 +155,69 @@ class AuxServer:
                 log_error(f"Falha ao baixar modelo auxiliar: {e}")
             return
 
-    def web_search(self, query: str) -> list[str]:
-        try:
-            response = self.client.web_search(query=query, max_results=2)
-            return response.get('results', [])
-        except Exception as e:
-            return [f"Search error: {str(e)}"]
+    # def web_search(self, query: str) -> list[str]:
+    #     try:
+    #         response = self.client.web_search(query=query, max_results=2)
+    #         return response.get('results', [])
+    #     except Exception as e:
+    #         return [f"Search error: {str(e)}"]
 
     @staticmethod
     def pass_turn() -> str:
+        """Indica ao modelo que ele deve pular a vez e não usar nenhuma ferramenta.
+
+        Returns:
+            Uma string vazia.
+        """
         return ''
 
     @staticmethod
     def add_numbers(a: int, b: int) -> int:
+        """Adiciona dois números inteiros.
+
+        Args:
+            a: O primeiro número inteiro a ser somado.
+            b: O segundo número inteiro a ser somado.
+
+        Returns:
+            A soma dos dois números inteiros.
+        """
         return int(a) + int(b)
 
     @staticmethod
     def subtract_numbers(a: int, b: int) -> int:
+        """Subtrai o segundo número inteiro do primeiro.
+
+        Args:
+            a: O número inteiro do qual será subtraído.
+            b: O número inteiro a ser subtraído.
+
+        Returns:
+            A diferença entre os dois números inteiros.
+        """
         return int(a) - int(b)
 
     @staticmethod
     def multiply_numbers(a: int, b: int) -> int:
+        """Multiplica dois números inteiros.
+
+        Args:
+            a: O primeiro número inteiro a ser multiplicado.
+            b: O segundo número inteiro a ser multiplicado.
+
+        Returns:
+            O produto dos dois números inteiros.
+        """
         return int(a) * int(b)
 
     def take_screenshot(self) -> str:
+        """Tira uma captura de tela (screenshot) da tela principal, salva em um arquivo e, em seguida,
+        envia a imagem para um modelo auxiliar de IA para obter uma descrição detalhada em português do Brasil.
+
+        Returns:
+            A descrição detalhada da imagem gerada pela IA auxiliar, ou uma mensagem de erro se a captura
+            de tela ou a chamada à IA falhar.
+        """
         try:
             with mss.mss() as sct:
                 monitor = sct.monitors[0]
@@ -238,7 +275,7 @@ class MainServer:
             log_error(f"Erro ao baixar modelos: {e}")
     
     def generate_test(self):
-        user_message = UserMessage(message='[Test] mensagem para testar se você esta funcionando responda se sim ou não')
+        user_message = UserMessage(message='mensagem para testar se você esta funcionando responda se sim ou não', tag='[Test]')
         log_info(f'Aquecendo modelo com: "{user_message.message}"')
         list_tkns = []
         messages_to_send = [self.sysMessage.format(), user_message.format()]
@@ -258,7 +295,7 @@ class MainServer:
         return ''.join(list_tkns)
 
     def generate(self, message):
-        user_message = UserMessage(message=message)
+        user_message = UserMessage(message=message, tag=['[Professor]'])
         self.messages.append(user_message.format())
         list_tkns = []
         
