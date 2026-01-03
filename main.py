@@ -100,19 +100,27 @@ class System:
 
 @dataclass
 class Tool:
-    tool: str
+    name: str
+    result: str
 
     def format(self):
         return {
             'role': 'tool',
-            'content': self.tool
+            'tool_name': self.name, 
+            'content': self.result
         }
 
     def is_empty(self):
-        return self.tool == ''
+        return self.name == ''
     
     def __repr__(self):
-        return f'{{tool={self.tool[:15]}...}}'
+        return f'{{tool={self.name[:15]}...}}'
+
+# futura implementação para as mensagens trocadas
+@dataclass
+class Messages:
+    sys: str
+    chat: str
     
 # ===== FERRAMENTAS =====
 
@@ -122,7 +130,7 @@ class AuxServer:
         self.model = _model
         self.filename = "screenshot.jpg"
 
-        self.tools_list = {
+        self.tools_dict = {
             'pass_turn': self.pass_turn,
             'add_numbers': self.add_numbers,
             'subtract_numbers': self.subtract_numbers,
@@ -139,7 +147,10 @@ class AuxServer:
         ]
 
     def get_tool_list(self):
-        return self.tools_list
+        return self.tools
+    
+    def get_tool_dict(self):
+        return self.tools_dict
     
     def get_tools(self):
         return self.tools
@@ -261,8 +272,8 @@ class MainServer:
         self.sysMessage = System(sys)
         self.messages: list[dict] = [self.sysMessage.format()]
 
-    def stream(self, _messages_formated: str):
-        return  self.client.chat(self.model, messages=_messages_formated, stream=True, tools=self.aux_server.get_tools())
+    def stream(self, _messages_formated: str, _tool_list: list = None):
+        return  self.client.chat(self.model, messages=_messages_formated, stream=True, tools=_tool_list)
     
     def pull(self, _model: str = None):
         target_model = _model if _model else self.model
@@ -275,15 +286,15 @@ class MainServer:
             log_error(f"Erro ao baixar modelos: {e}")
     
     def generate_test(self):
-        user_message = UserMessage(message='mensagem para testar se você esta funcionando responda se sim ou não', tag='[Test]')
+        user_message = UserMessage(message='responda sim', tag='[Test]')
         log_info(f'Aquecendo modelo com: "{user_message.message}"')
         list_tkns = []
         messages_to_send = [self.sysMessage.format(), user_message.format()]
         log_info(f'mensagem para aquecimento: "{messages_to_send}"')
         try:
             print(f"Iniciando: {Colors.CYAN}", end='')
-            for part in self.stream(messages_to_send):
-                log_info(part)
+            stream = self.stream(messages_to_send)
+            for part in stream:
                 content = part.message.content
                 if content:
                     list_tkns.append(content)
@@ -299,11 +310,8 @@ class MainServer:
         self.messages.append(user_message.format())
         list_tkns = []
         
-        # Flag para saber se o modelo decidiu ficar quieto
-        used_pass_turn = False
-        
         try:
-            stream_generator = self.stream(self.messages)
+            stream_generator = self.stream(self.messages, self.aux_server.get_tool_list())
             
             try:
                 first_chunk = next(stream_generator)
@@ -314,24 +322,17 @@ class MainServer:
             if first_chunk.message.tool_calls:
                 for tool in first_chunk.message.tool_calls:
                     tool_name = tool['function']['name']
-                    
-                    # Verifica se a ferramenta é pass_turn
-                    if tool_name == 'pass_turn':
-                        used_pass_turn = True
-                        log_tool(tool_name, "(Silêncio)")
-                        tool_obj = Tool("") 
-                        self.messages.append(tool_obj.format())
-                        continue
 
                     # Executa outras ferramentas
-                    tool_to_call: callable = self.aux_server.get_tool_list().get(tool_name)
+                    tool_to_call: callable = self.aux_server.get_tool_dict().get(tool_name)
                     if tool_to_call:
                         try: 
                             result = tool_to_call(**tool.function.arguments)
-                            tool_obj = Tool(str(result))
+                            tool_obj = Tool(name=tool_name, result=str(result))
                             log_tool(tool_name, str(result))
                             
                             if not tool_obj.is_empty():
+                                log_info(tool_obj.format())
                                 self.messages.append(tool_obj.format())
                         except Exception as e:
                             log_error(f'Erro na tool {tool_name}: {e}')
@@ -360,10 +361,6 @@ class MainServer:
             
             # LÓGICA CORRIGIDA:
             if not full_text:
-                if used_pass_turn:
-                    log_info("IA decidiu passar a vez (Silêncio intencional).")
-                    return None # Retorna None para avisar o VoiceAssistant para não usar TTS
-                
                 log_warning("IA retornou resposta vazia inesperada.")
                 return "Não entendi."
                 
@@ -413,7 +410,7 @@ class RealTimeSTT:
         self.RATE = 16000
         
         self.ENERGY_THRESHOLD = 300
-        self.PAUSE_THRESHOLD = 0.8
+        self.PAUSE_THRESHOLD = 1.3
         self.SILENCE_CHUNKS = int(self.PAUSE_THRESHOLD * self.RATE / self.CHUNK)
         
         self.audio_queue = queue.Queue()
