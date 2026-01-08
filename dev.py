@@ -542,7 +542,6 @@ class VoiceAssistant:
         log_info("Gerando resposta da IA...")
         ai_response = self.main_server.generate(text)
         
-        # SÓ FALA SE TIVER RESPOSTA (se for None, fica quieto)
         if ai_response:
             log_info("Sintetizando voz (TTS)...")
             self.tts.generate(text=ai_response)
@@ -550,7 +549,6 @@ class VoiceAssistant:
         log_success("Ciclo concluído. Aguardando nova fala...")
 
     def run(self):
-        # ... (pode manter o run igual estava) ...
         log_info('Pulling models (verificando atualizações)...')
         self.main_server.pull()
         log_info('Executando teste inicial de Áudio/LLM...')

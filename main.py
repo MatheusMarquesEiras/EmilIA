@@ -6,7 +6,6 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-# Bibliotecas de Áudio e IA
 from ollama import Client
 import wave
 from piper import PiperVoice, SynthesisConfig
@@ -16,12 +15,9 @@ import numpy as np
 import pyaudio
 from faster_whisper import WhisperModel
 
-# Utilitários Visuais
 import emoji
 import mss
 from PIL import Image
-
-# ===== CONFIGURAÇÃO DE CORES E LOGGING =====
 
 class Colors:
     RESET = "\033[0m"
@@ -58,7 +54,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 # ===== CONFIGURAÇÕES GERAIS =====
 _main_url = "http://localhost:11434"
 _aux_url = "http://localhost:11435"
-_main_model = 'llama3.1:8b'
+_main_model = 'llama3.2:1b'
 _aux_model = 'granite3.2-vision'
 
 @dataclass
@@ -131,7 +127,6 @@ class AuxServer:
         self.filename = "screenshot.jpg"
 
         self.tools_dict = {
-            'pass_turn': self.pass_turn,
             'add_numbers': self.add_numbers,
             'subtract_numbers': self.subtract_numbers,
             'multiply_numbers': self.multiply_numbers,
@@ -139,7 +134,6 @@ class AuxServer:
         }
 
         self.tools = [
-            self.pass_turn,
             self.add_numbers,
             self.subtract_numbers,
             self.multiply_numbers,
@@ -172,15 +166,6 @@ class AuxServer:
     #         return response.get('results', [])
     #     except Exception as e:
     #         return [f"Search error: {str(e)}"]
-
-    @staticmethod
-    def pass_turn() -> str:
-        """Indica ao modelo que ele deve pular a vez e não usar nenhuma ferramenta.
-
-        Returns:
-            Uma string vazia.
-        """
-        return ''
 
     @staticmethod
     def add_numbers(a: int, b: int) -> int:
@@ -290,11 +275,14 @@ class MainServer:
         log_info(f'Aquecendo modelo com: "{user_message.message}"')
         list_tkns = []
         messages_to_send = [self.sysMessage.format(), user_message.format()]
-        log_info(f'mensagem para aquecimento: "{messages_to_send}"')
+        # log_info(f'mensagem para aquecimento: "{messages_to_send}"')
         try:
             print(f"Iniciando: {Colors.CYAN}", end='')
             stream = self.stream(messages_to_send)
             for part in stream:
+                if part.done:
+                    log_info(f'input tokens: {part.prompt_eval_count}')
+                    log_info(f'output tokens: {part.eval_count}')
                 content = part.message.content
                 if content:
                     list_tkns.append(content)
@@ -348,6 +336,10 @@ class MainServer:
             print(f"{Colors.CYAN}", end='') 
             for part in stream_generator:
                 content = part.message.content
+                if part.done:
+                    log_info(f'input tokens: {part.prompt_eval_count}')
+                    log_info(f'output tokens: {part.eval_count}')
+
                 if content:
                     list_tkns.append(content)
                     print(content, end='', flush=True)

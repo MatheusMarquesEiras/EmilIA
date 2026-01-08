@@ -1,0 +1,3 @@
+![INFO] input tokens: model='llama3.1:8b' created_at='2026-01-08T04:20:36.398041665Z' done=True done_reason='stop' total_duration=1577990619 load_duration=394071457 
+prompt_eval_count=556 prompt_eval_duration=235325089 eval_count=7 eval_duration=890295855 message=Message(role='assistant', content='', thinking=None, images=None, 
+tool_name=None, tool_calls=None) logprobs=None
