@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  ollama-1:
+    image: ollama/ollama:latest
+    container_name: ollama-1
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./storage/backup-1:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # 'all' permite que ambos acessem a GPU sem reserva exclusiva
+              count: all
+              capabilities: [gpu]
+
+  ollama-2:
+    image: ollama/ollama:latest
+    container_name: ollama-2
+    restart: unless-stopped
+    ports:
+      - "11435:11434" # Mapeado na porta externa 11435
+    volumes:
+      - ./storage/backup-2:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

@@ -146,6 +146,7 @@ class AuxServer:
             try:
                 log_info(f"Baixando/Verificando modelo auxiliar: {self.model} (Porta Aux)...")
                 self.client.pull(model=self.model)
+                self.client.pull(model=_main_model)
                 log_success(f"Modelo auxiliar {self.model} pronto.")
             except Exception as e:
                 log_error(f"Falha ao baixar modelo auxiliar: {e}")
@@ -162,7 +163,10 @@ class AuxServer:
         """
         try:
             response = self.client.web_search(query=query, max_results=2)
-            return [item['content'] for item in response.get('results', [])]
+            content_list = [item['content'] for item in response.get('results', [])]
+            sys_msg = f'Você vai receber a seguinte entrada "{content_list}" que deve ser sumarizado para responder a seguinte pergunta de forma mais direta possivel "{query}"'
+            answer = self.client.chat(model=_main_model, messages=[{'role': 'user', 'content': sys_msg}])
+            return [str(answer['message']['content']).strip()]
         except Exception as e:
             return [f"Search error: {str(e)}"]
 
