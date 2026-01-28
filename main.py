@@ -254,6 +254,16 @@ class AuxServer:
             log_error(f"Erro na IA Auxiliar: {e}")
             return [f"Auxiliary AI Error: {e}"]
     
+    def pass_turn(self) -> list[str]:
+        """Use this function ONLY when the user's input does not match any of the other available functions or tools.
+
+        Returns:
+            list[str]: A list of textual status updates resulting from this action.
+        """
+        return ['pass']
+    
+
+
 class MainServer:
     def __init__(self, _main_url: str, _aux_url: str, _main_model: str, _aux_model: str, sys: str = ''):
         self.client = Client(host=_main_url)
