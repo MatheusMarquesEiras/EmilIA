@@ -101,8 +101,6 @@ class Tool:
             'role': 'tool',
             'tool_name': str(self.name), 
             'content': str(self.result)
-            'tool_name': str(self.name), 
-            'content': str(self.result)
         }
 
     def is_empty(self):
@@ -193,10 +191,6 @@ class AuxServer:
     def web_search(self, query: str) -> str:
         """Realiza pesquisas na internet.
     def web_search(self, query: str) -> str:
-        """Realiza pesquisas na internet.
-        Args:
-            query: A pergunta ou termo a ser pesquisado.
-            query: A pergunta ou termo a ser pesquisado.
         """
         try:
             response = self.client.web_search(query=query, max_results=2)
@@ -207,11 +201,8 @@ class AuxServer:
             return str(answer['message']['content']).strip()
         except Exception as e:
             return f"Search error: {str(e)}"
-            return f"Search error: {str(e)}"
 
     @staticmethod
-    def add_numbers(a: int, b: int) -> int:
-        """Soma dois números inteiros.
     def add_numbers(a: int, b: int) -> int:
         """Soma dois números inteiros.
         Args:
@@ -221,25 +212,15 @@ class AuxServer:
             b: Segundo número.
         """
         return int(a) + int(b)
-        return int(a) + int(b)
 
     @staticmethod
     def subtract_numbers(a: int, b: int) -> int:
         """Subtrai o segundo número do primeiro.
     def subtract_numbers(a: int, b: int) -> int:
-        """Subtrai o segundo número do primeiro.
-        Args:
-            a: O número do qual subtrair (minuendo).
-            b: O número a subtrair (subtraendo).
-            a: O número do qual subtrair (minuendo).
-            b: O número a subtrair (subtraendo).
         """
         return int(a) - int(b)
-        return int(a) - int(b)
 
     @staticmethod
-    def multiply_numbers(a: int, b: int) -> int:
-        """Multiplica dois números.
     def multiply_numbers(a: int, b: int) -> int:
         """Multiplica dois números.
         Args:
