@@ -67,6 +67,7 @@ class UserMessage:
     
         if self.img is not None:
             data['image_url'] = [self.img] 
+            data['image_url'] = [self.img] 
             
         return data
     
@@ -100,6 +101,8 @@ class Tool:
             'role': 'tool',
             'tool_name': str(self.name), 
             'content': str(self.result)
+            'tool_name': str(self.name), 
+            'content': str(self.result)
         }
 
     def is_empty(self):
@@ -128,6 +131,7 @@ class AuxServer:
             'multiply_numbers': self.multiply_numbers,
             'take_screenshot': self.take_screenshot,
             'web_search': self.web_search,
+            #'pass_turn': self.pass_turn,
             #'pass_turn': self.pass_turn,
         }
 
@@ -177,6 +181,7 @@ class AuxServer:
 
             try:
                 result = self.tools_dict[tool.function.name](**tool.function.arguments)
+                result = self.tools_dict[tool.function.name](**tool.function.arguments)
             except Exception as e:
                 log_error(f"Erro ao executar ferramenta {tool.function.name}: {e}")
                 return False, None
@@ -187,7 +192,10 @@ class AuxServer:
 
     def web_search(self, query: str) -> str:
         """Realiza pesquisas na internet.
+    def web_search(self, query: str) -> str:
+        """Realiza pesquisas na internet.
         Args:
+            query: A pergunta ou termo a ser pesquisado.
             query: A pergunta ou termo a ser pesquisado.
         """
         try:
@@ -196,36 +204,55 @@ class AuxServer:
             sys_msg = f'Você vai receber a seguinte entrada "{content_list}" que deve ser sumarizado para responder a seguinte pergunta de forma mais direta possivel "{query}"'
             answer = self.client.chat(model=_main_model, messages=[{'role': 'user', 'content': sys_msg}])
             return str(answer['message']['content']).strip()
+            return str(answer['message']['content']).strip()
         except Exception as e:
+            return f"Search error: {str(e)}"
             return f"Search error: {str(e)}"
 
     @staticmethod
     def add_numbers(a: int, b: int) -> int:
         """Soma dois números inteiros.
+    def add_numbers(a: int, b: int) -> int:
+        """Soma dois números inteiros.
         Args:
             a: Primeiro número.
             b: Segundo número.
+            a: Primeiro número.
+            b: Segundo número.
         """
+        return int(a) + int(b)
         return int(a) + int(b)
 
     @staticmethod
     def subtract_numbers(a: int, b: int) -> int:
         """Subtrai o segundo número do primeiro.
+    def subtract_numbers(a: int, b: int) -> int:
+        """Subtrai o segundo número do primeiro.
         Args:
             a: O número do qual subtrair (minuendo).
             b: O número a subtrair (subtraendo).
+            a: O número do qual subtrair (minuendo).
+            b: O número a subtrair (subtraendo).
         """
+        return int(a) - int(b)
         return int(a) - int(b)
 
     @staticmethod
     def multiply_numbers(a: int, b: int) -> int:
         """Multiplica dois números.
+    def multiply_numbers(a: int, b: int) -> int:
+        """Multiplica dois números.
         Args:
+            a: O primeiro número.
+            b: O segundo número.
             a: O primeiro número.
             b: O segundo número.
         """
         return int(a) * int(b)
+        return int(a) * int(b)
 
+    def take_screenshot(self) -> str:
+        """Captura uma imagem da tela atual."""
     def take_screenshot(self) -> str:
         """Captura uma imagem da tela atual."""
         try:
@@ -254,16 +281,6 @@ class AuxServer:
             log_error(f"Erro na IA Auxiliar: {e}")
             return [f"Auxiliary AI Error: {e}"]
     
-    def pass_turn(self) -> list[str]:
-        """Use this function ONLY when the user's input does not match any of the other available functions or tools.
-
-        Returns:
-            list[str]: A list of textual status updates resulting from this action.
-        """
-        return ['pass']
-    
-
-
 class MainServer:
     def __init__(self, _main_url: str, _aux_url: str, _main_model: str, _aux_model: str, sys: str = ''):
         self.client = Client(host=_main_url)
@@ -321,7 +338,9 @@ class MainServer:
 
     def generate(self, message):
         user_message = UserMessage(message=message, tag='[Professor]')
+        user_message = UserMessage(message=message, tag='[Professor]')
         called_tool = self.aux_server.generate_response(message=message)
+        log_info(f'called tool: {called_tool}')
         log_info(f'called tool: {called_tool}')
         if called_tool:
             self.messages.append(called_tool.format())
