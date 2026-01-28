@@ -60,15 +60,12 @@ class UserMessage:
     img: Optional[str] = None
 
     def format(self):
-        data =  {
+        data = {
             'role': 'user',
             'content': f"{self.tag} {self.message}".strip()
         }
-    
         if self.img is not None:
-            data['image_url'] = [self.img] 
-            data['image_url'] = [self.img] 
-            
+            data['images'] = [self.img]  # 👈 Corrigido: 'images' ao invés de 'image_url'
         return data
     
 @dataclass
@@ -109,19 +106,21 @@ class Tool:
     def __repr__(self):
         return f'{{tool={self.name[:15]}...}}'
 
-@dataclass
-class Messages:
-    sys: str
-    chat: str
-
 class AuxServer:
-    def __init__(self, _url: str, _model, sys: str = ''):
-        self.client = Client(host=_url, headers={'Authorization': 'Bearer 88a4d679872640ab9347b357354679b8.6wkfkl4cWeENTn0xq4V_uQee'})
+    def __init__(self, _url: str, _model: str, sys: str = ''):
+        self.client = Client(
+            host=_url, 
+            headers={'Authorization': 'Bearer 88a4d679872640ab9347b357354679b8.6wkfkl4cWeENTn0xq4V_uQee'}
+        )
         self.model = _model
         self.filename = "screenshot.jpg"
 
-        with open('sys_aux.txt', 'r', encoding='utf-8') as f:
-            self.system = System(message=f.read())
+        try:
+            with open('sys_aux.txt', 'r', encoding='utf-8') as f:
+                self.system = System(message=f.read())
+        except FileNotFoundError:
+            log_warning("Arquivo sys_aux.txt não encontrado. Usando system prompt padrão.")
+            self.system = System(message="Você é um assistente auxiliar especializado em ferramentas.")
 
         self.tools_dict = {
             'add_numbers': self.add_numbers,
@@ -129,8 +128,6 @@ class AuxServer:
             'multiply_numbers': self.multiply_numbers,
             'take_screenshot': self.take_screenshot,
             'web_search': self.web_search,
-            #'pass_turn': self.pass_turn,
-            #'pass_turn': self.pass_turn,
         }
 
     def get_tool_list(self):
@@ -143,26 +140,26 @@ class AuxServer:
         """Baixa o modelo auxiliar explicitamente"""
         if self.model:
             try:
-                log_info(f"Baixando/Verificando modelo auxiliar: {self.model} (Porta Aux)...")
+                log_info(f"Baixando/Verificando modelo auxiliar: {self.model}...")
                 self.client.pull(model=self.model)
                 log_success(f"Modelo auxiliar {self.model} pronto.")
             except Exception as e:
                 log_error(f"Falha ao baixar modelo auxiliar: {e}")
-            return
         
     def generate_response(self, message: str):
         """Gera resposta usando o modelo e ferramentas."""
-        user_message = UserMessage(message=message, tag='[test]')
+        user_message = UserMessage(message=message, tag='[tool_check]')
         
         try:
             response = self.client.chat(
                 model=self.model,
                 messages=[self.system.format(), user_message.format()],
-                tools=self.get_tool_list()  # Passa funções Python diretamente!
+                tools=self.get_tool_list(),
+                keep_alive=True  # 👈 Mudança: True ao invés de '30m'
             )
         except Exception as e:
             log_error(f"Erro ao gerar resposta do modelo: {e}")
-            return False, None
+            return None
 
         msg = response.message
 
@@ -170,7 +167,6 @@ class AuxServer:
             return None
 
         for tool in msg.tool_calls:
-
             log_info(f"🎯 Ferramenta escolhida: {tool.function.name} | Argumentos: {tool.function.arguments}")
 
             if tool.function.name not in self.get_tool_dict():
@@ -179,61 +175,44 @@ class AuxServer:
 
             try:
                 result = self.tools_dict[tool.function.name](**tool.function.arguments)
-                result = self.tools_dict[tool.function.name](**tool.function.arguments)
             except Exception as e:
                 log_error(f"Erro ao executar ferramenta {tool.function.name}: {e}")
-                return False, None
+                return None
 
-            return Tool(name=tool.function.name, result=result)
+            return Tool(name=tool.function.name, result=str(result))
 
-
+        return None
 
     def web_search(self, query: str) -> str:
-        """Realiza pesquisas na internet.
-    def web_search(self, query: str) -> str:
-        """
+        """Realiza pesquisas na internet."""
         try:
             response = self.client.web_search(query=query, max_results=2)
             content_list = [item['content'] for item in response.get('results', [])]
-            sys_msg = f'Você vai receber a seguinte entrada "{content_list}" que deve ser sumarizado para responder a seguinte pergunta de forma mais direta possivel "{query}"'
-            answer = self.client.chat(model=_main_model, messages=[{'role': 'user', 'content': sys_msg}])
-            return str(answer['message']['content']).strip()
+            sys_msg = f'Você vai receber a seguinte entrada "{content_list}" que deve ser sumarizado para responder a seguinte pergunta de forma mais direta possível "{query}"'
+            answer = self.client.chat(
+                model=_main_model, 
+                messages=[{'role': 'user', 'content': sys_msg}],
+                keep_alive=True  # 👈 Mudança
+            )
             return str(answer['message']['content']).strip()
         except Exception as e:
             return f"Search error: {str(e)}"
 
     @staticmethod
     def add_numbers(a: int, b: int) -> int:
-        """Soma dois números inteiros.
-        Args:
-            a: Primeiro número.
-            b: Segundo número.
-            a: Primeiro número.
-            b: Segundo número.
-        """
+        """Soma dois números inteiros."""
         return int(a) + int(b)
 
     @staticmethod
     def subtract_numbers(a: int, b: int) -> int:
-        """Subtrai o segundo número do primeiro.
-    def subtract_numbers(a: int, b: int) -> int:
-        """
+        """Subtrai o segundo número do primeiro."""
         return int(a) - int(b)
 
     @staticmethod
     def multiply_numbers(a: int, b: int) -> int:
-        """Multiplica dois números.
-        Args:
-            a: O primeiro número.
-            b: O segundo número.
-            a: O primeiro número.
-            b: O segundo número.
-        """
-        return int(a) * int(b)
+        """Multiplica dois números."""
         return int(a) * int(b)
 
-    def take_screenshot(self) -> str:
-        """Captura uma imagem da tela atual."""
     def take_screenshot(self) -> str:
         """Captura uma imagem da tela atual."""
         try:
@@ -252,21 +231,22 @@ class AuxServer:
                 messages=[
                     {
                         'role': 'user',
-                        'content': 'Descreva esta imagem em um longo paragrafo em português do Brasil:', 
-                        'images': [f'{self.filename}']
+                        'content': 'Descreva esta imagem em um longo parágrafo em português do Brasil:', 
+                        'images': [self.filename]
                     }
-                ]
+                ],
+                keep_alive=True  # 👈 Mudança
             )
-            return [res['message']['content']]
+            return res['message']['content']
         except Exception as e:
             log_error(f"Erro na IA Auxiliar: {e}")
-            return [f"Auxiliary AI Error: {e}"]
+            return f"Auxiliary AI Error: {e}"
     
 class MainServer:
     def __init__(self, _main_url: str, _aux_url: str, _main_model: str, _aux_model: str, sys: str = ''):
         self.client = Client(host=_main_url)
         self.model = _main_model
-        self.aux_server = AuxServer(_url=_aux_url, _model=_aux_model)
+        #self.aux_server = AuxServer(_url=_aux_url, _model=_aux_model)
 
         try:
             if not sys:
@@ -279,21 +259,57 @@ class MainServer:
         self.sysMessage = System(sys)
         self.messages: list[dict] = [self.sysMessage.format()]
 
-    def stream(self, _messages_formated: str, _tool_list: list = None):
-        return  self.client.chat(self.model, messages=_messages_formated, stream=True, tools=_tool_list, options={'temperature': 0.5})
+    def stream(self, _messages_formated: list, _tool_list: list = None):
+        return self.client.chat(
+            self.model, 
+            messages=_messages_formated, 
+            stream=True, 
+            tools=_tool_list, 
+            options={'temperature': 0.5},
+            keep_alive=True  # 👈 Mudança: True ao invés de '30m'
+        )
     
     def pull(self, _model: str = None):
+        """Baixa e pré-carrega ambos os modelos na memória"""
         target_model = _model if _model else self.model
         try:
+            # 1. Pull do modelo principal
             log_info(f"Baixando/Verificando modelo principal: {target_model}...")
             self.client.pull(model=target_model)
-            log_success(f"Modelo principal {target_model} pronto.")
-            model_info = self.client.show(model=target_model)
-            log_info(model_info.get('parameters', 'No specific parameters found'))
-            self.aux_server.pull()
-            log_success(f"Modelo auxiliar pronto.")
+            
+            # 2. PRÉ-CARREGA modelo principal na memória
+            log_info(f"⚡ Pré-carregando {target_model} na memória...")
+            self.client.chat(
+                model=target_model,
+                messages=[{'role': 'user', 'content': 'init'}],
+                keep_alive=True
+            )
+            log_success(f"✅ Modelo principal {target_model} carregado!")
+            
+            # 3. Mostra informações do modelo
+            try:
+                model_info = self.client.show(model=target_model)
+                log_info(f"Parâmetros: {model_info.get('parameters', 'N/A')}")
+            except:
+                pass
+            
+            # # 4. Pull do modelo auxiliar
+            # log_info(f"Baixando/Verificando modelo auxiliar: {self.aux_server.model}...")
+            # self.aux_server.pull()
+            
+            # # 5. PRÉ-CARREGA modelo auxiliar na memória
+            # log_info(f"⚡ Pré-carregando {self.aux_server.model} na memória...")
+            # self.aux_server.client.chat(
+            #     model=self.aux_server.model,
+            #     messages=[{'role': 'user', 'content': 'init'}],
+            #     keep_alive=True
+            # )
+            # log_success(f"✅ Modelo auxiliar {self.aux_server.model} carregado!")
+            
+            log_success("🚀 Ambos os modelos estão carregados na memória!")
+            
         except Exception as e:
-            log_error(f"Erro ao baixar modelos: {e}")
+            log_error(f"Erro ao configurar modelos: {e}")
     
     def generate_test(self):
         user_message = UserMessage(message='responda sim', tag='[Test]')
@@ -305,26 +321,29 @@ class MainServer:
             stream = self.stream(messages_to_send)
             for part in stream:
                 if part.done:
-                    log_info(f'input tokens: {part.prompt_eval_count}')
+                    log_info(f'\ninput tokens: {part.prompt_eval_count}')
                     log_info(f'output tokens: {part.eval_count}')
                 content = part.message.content
                 if content:
                     list_tkns.append(content)
                     print(content, end='', flush=True)
-            print(f"Finalizando stream{Colors.RESET}")
+            print(f"{Colors.RESET}")
         except Exception as e:
             log_error(f"Erro no teste: {e}")
         log_success('Aquecimento concluído.')
-        return ''.join(list_tkns)
 
-    def generate(self, message):
+        full_text = emoji.replace_emoji(''.join(list_tkns), replace="").strip()
+        return full_text
+
+    def generate(self, message: str):
         user_message = UserMessage(message=message, tag='[Professor]')
-        user_message = UserMessage(message=message, tag='[Professor]')
-        called_tool = self.aux_server.generate_response(message=message)
-        log_info(f'called tool: {called_tool}')
-        log_info(f'called tool: {called_tool}')
-        if called_tool:
-            self.messages.append(called_tool.format())
+        
+        # Verifica se precisa usar ferramentas
+        # called_tool = self.aux_server.generate_response(message=message)
+        # log_info(f'called tool: {called_tool}')
+        
+        # if called_tool:
+        #     self.messages.append(called_tool.format())
 
         self.messages.append(user_message.format())
         list_tkns = []
@@ -341,20 +360,17 @@ class MainServer:
                 if content:
                     list_tkns.append(content)
                     print(content, end='', flush=True)
-            print(f"{Colors.RESET}")
-            print() 
+            print(f"{Colors.RESET}\n")
             
             full_text = emoji.replace_emoji(''.join(list_tkns), replace="").strip()
             
-            m2 = AIMessage(full_text)
-            self.messages.append(m2.format())
-            
-            # LÓGICA CORRIGIDA:
-            if not full_text:
+            if full_text:
+                m2 = AIMessage(full_text)
+                self.messages.append(m2.format())
+                return full_text
+            else:
                 log_warning("IA retornou resposta vazia inesperada.")
                 return "Não entendi."
-                
-            return full_text
 
         except Exception as e:
             log_error(f"Erro crítico na geração: {e}")
@@ -364,11 +380,9 @@ class TTS:
     def __init__(self):
         self.num = ''
         try:
-            self.voice = PiperVoice.load(f"controle.onnx")
+            self.voice = PiperVoice.load("controle.onnx")
             self.syn_config = SynthesisConfig(volume=0.5, length_scale=1.3)
-            
             self.device_id = self._get_cable_index('CABLE Input (VB-Audio Virtual')
-
             self.output_file = f"test{self.num}.wav"
         except Exception as e:
             log_error(f"Erro TTS Init: {e}")
@@ -378,14 +392,11 @@ class TTS:
         try:
             for i in range(p.get_device_count()):
                 device_info = p.get_device_info_by_index(i)
-                
                 api_name = p.get_host_api_info_by_index(device_info['hostApi'])['name']
-                
                 if nome_buscado.lower() in device_info['name'].lower() and "MME" in api_name:
                     return i
         finally:
             p.terminate()
-                
         return None
 
     def generate(self, text):
@@ -398,12 +409,10 @@ class TTS:
                 self.voice.synthesize_wav(text, wav_file, syn_config=self.syn_config)
             
             audio_data, samplerate = sf.read(self.output_file)
-            
             sd.play(audio_data, samplerate=samplerate, device=self.device_id)
             sd.wait()
         except Exception as e:
             log_error(f"Erro TTS Play: {e}")
-
 
 class RealTimeSTT:
     def __init__(self, model_size="small", device="auto", language="pt", input_device_index=None, callback=None):
@@ -448,8 +457,14 @@ class RealTimeSTT:
     def _producer(self):
         p = pyaudio.PyAudio()
         try:
-            stream = p.open(format=self.FORMAT, channels=self.CHANNELS, rate=self.RATE, input=True,
-                            input_device_index=self.input_device_index, frames_per_buffer=self.CHUNK)
+            stream = p.open(
+                format=self.FORMAT, 
+                channels=self.CHANNELS, 
+                rate=self.RATE, 
+                input=True,
+                input_device_index=self.input_device_index, 
+                frames_per_buffer=self.CHUNK
+            )
             while self.running:
                 try:
                     data = stream.read(self.CHUNK, exception_on_overflow=False)
@@ -503,10 +518,10 @@ class RealTimeSTT:
                 log_error(f"Erro no Consumer: {e}")
 
     def _transcribe_buffer(self, buffer_list):
-        if not buffer_list: return
+        if not buffer_list: 
+            return
         
         full_audio_data = b"".join(buffer_list)
-        
         audio_np = np.frombuffer(full_audio_data, dtype=np.int16)
         
         if self.CHANNELS == 2:
@@ -519,8 +534,11 @@ class RealTimeSTT:
 
         try:
             segments, _ = self.model.transcribe(
-                audio_array, language=self.language, beam_size=5,
-                vad_filter=True, vad_parameters=dict(min_silence_duration_ms=500)
+                audio_array, 
+                language=self.language, 
+                beam_size=5,
+                vad_filter=True, 
+                vad_parameters=dict(min_silence_duration_ms=500)
             )
             text_segment = " ".join([s.text for s in segments]).strip()
             
@@ -537,7 +555,12 @@ class RealTimeSTT:
 class VoiceAssistant:
     def __init__(self):
         log_info("Inicializando Voice Assistant...")
-        self.main_server = MainServer(_main_url=_main_url, _aux_url=_aux_url, _main_model=_main_model, _aux_model=_aux_model)
+        self.main_server = MainServer(
+            _main_url=_main_url, 
+            _aux_url=_aux_url, 
+            _main_model=_main_model, 
+            _aux_model=_aux_model
+        )
         self.tts = TTS()
         
         self.stt = RealTimeSTT(
@@ -553,15 +576,12 @@ class VoiceAssistant:
         try:
             for i in range(p.get_device_count()):
                 device_info = p.get_device_info_by_index(i)
-                
                 api_name = p.get_host_api_info_by_index(device_info['hostApi'])['name']
-                
                 if nome_buscado.lower() in device_info['name'].lower() and "MME" in api_name:
                     log_success(f"Microfone encontrado via MME: {device_info['name']}")
                     return i
         finally:
             p.terminate()
-                
         return None
 
     def process_input(self, text):
@@ -574,7 +594,6 @@ class VoiceAssistant:
         log_info("Gerando resposta da IA...")
         ai_response = self.main_server.generate(text)
         
-        # SÓ FALA SE TIVER RESPOSTA (se for None, fica quieto)
         if ai_response:
             log_info("Sintetizando voz (TTS)...")
             self.tts.generate(text=ai_response)
@@ -582,14 +601,18 @@ class VoiceAssistant:
         log_success("Ciclo concluído. Aguardando nova fala...")
 
     def run(self):
-        log_info('Pulling models (verificando atualizações)...')
+        log_info('📦 Pulling models (verificando atualizações)...')
         self.main_server.pull()
-        log_info('Executando teste inicial de Áudio/LLM...')
+        
+        log_info('🔥 Executando teste inicial de Áudio/LLM...')
         test_text = self.main_server.generate_test()
-        log_info(f"Falando resposta de teste...")
+        
+        log_info(f"🔊 Falando resposta de teste...")
         self.tts.generate(text=test_text)
-        log_success('ASSISTENTE PRONTO.')
+        
+        log_success('✅ ASSISTENTE PRONTO.')
         self.stt.start()
+        
         try:
             while self.stt.running:
                 time.sleep(0.1)
