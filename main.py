@@ -30,17 +30,14 @@ class Colors:
     CYAN = "\033[96m"
     WHITE = "\033[97m"
 
-# Configuração do Logger Padrão do Python
-# format='%(message)s' -> Removemos data/hora para ficar limpo no console como você gosta
 logging.basicConfig(
     level=logging.INFO,
     format='%(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)] # Apenas console, sem arquivo
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 
 logger = logging.getLogger("VoiceAssistant")
 
-# Funções auxiliares para manter o estilo visual
 def log_info(msg): logger.info(f"{Colors.BLUE}[INFO]{Colors.RESET} {msg}")
 def log_success(msg): logger.info(f"{Colors.GREEN}[OK]{Colors.RESET} {msg}")
 def log_warning(msg): logger.warning(f"{Colors.YELLOW}[AVISO]{Colors.RESET} {msg}")
@@ -51,22 +48,21 @@ def log_tool(name, res): logger.info(f"{Colors.PURPLE}[TOOL] 🛠️  Usando {na
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-# ===== CONFIGURAÇÕES GERAIS =====
 _main_url = "http://localhost:11434"
-_aux_url = "http://localhost:11435"
-_main_model = 'llama3.2:1b'
-_aux_model = 'granite3.2-vision'
+_aux_url = "http://localhost:11434"
+_main_model = 'gemma3:4b'
+_aux_model = 'func'
 
 @dataclass
 class UserMessage:
     message: str
-    tag: str
+    tag: str = ''
     img: Optional[str] = None
 
     def format(self):
         data =  {
             'role': 'user',
-            'content': f"{self.tag} {self.message}"
+            'content': f"{self.tag} {self.message}".strip()
         }
     
         if self.img is not None:
@@ -112,13 +108,10 @@ class Tool:
     def __repr__(self):
         return f'{{tool={self.name[:15]}...}}'
 
-# futura implementação para as mensagens trocadas
 @dataclass
 class Messages:
     sys: str
     chat: str
-    
-# ===== FERRAMENTAS =====
 
 class AuxServer:
     def __init__(self, _url: str, _model, sys: str = ''):
@@ -126,12 +119,16 @@ class AuxServer:
         self.model = _model
         self.filename = "screenshot.jpg"
 
+        with open('sys_aux.txt', 'r', encoding='utf-8') as f:
+            self.system = System(message=f.read())
+
         self.tools_dict = {
             'add_numbers': self.add_numbers,
             'subtract_numbers': self.subtract_numbers,
             'multiply_numbers': self.multiply_numbers,
             'take_screenshot': self.take_screenshot,
             'web_search': self.web_search,
+            'pass_turn': self.pass_turn,
         }
 
     def get_tool_list(self):
@@ -146,11 +143,47 @@ class AuxServer:
             try:
                 log_info(f"Baixando/Verificando modelo auxiliar: {self.model} (Porta Aux)...")
                 self.client.pull(model=self.model)
-                self.client.pull(model=_main_model)
                 log_success(f"Modelo auxiliar {self.model} pronto.")
             except Exception as e:
                 log_error(f"Falha ao baixar modelo auxiliar: {e}")
             return
+        
+    def generate_response(self, message: str):
+        """Gera resposta usando o modelo e ferramentas."""
+        user_message = UserMessage(message=message, tag='[test]')
+        
+        try:
+            response = self.client.chat(
+                model=self.model,
+                messages=[self.system.format(), user_message.format()],
+                tools=self.get_tool_list()  # Passa funções Python diretamente!
+            )
+        except Exception as e:
+            log_error(f"Erro ao gerar resposta do modelo: {e}")
+            return False, None
+
+        msg = response.message
+
+        if not msg.tool_calls:
+            return None
+
+        for tool in msg.tool_calls:
+
+            log_info(f"🎯 Ferramenta escolhida: {tool.function.name} | Argumentos: {tool.function.arguments}")
+
+            if tool.function.name not in self.get_tool_dict():
+                log_warning(f"⚠️ Ferramenta '{tool.function.name}' não encontrada no dicionário!")
+                return None
+
+            try:
+                result = self.tools_dict[tool.function.name](**args)
+            except Exception as e:
+                log_error(f"Erro ao executar ferramenta {tool.function.name}: {e}")
+                return False, None
+
+            return Tool(name=tool.function.name, result=result)
+
+
 
     def web_search(self, query: str) -> list[str]:
         """Performs a web search based on the provided query.
@@ -230,7 +263,7 @@ class AuxServer:
         
         try:
             res = self.client.chat(
-                model=self.model,
+                model=_main_model,
                 messages=[
                     {
                         'role': 'user',
@@ -243,6 +276,16 @@ class AuxServer:
         except Exception as e:
             log_error(f"Erro na IA Auxiliar: {e}")
             return [f"Auxiliary AI Error: {e}"]
+    
+    def pass_turn(self) -> list[str]:
+        """Use this function ONLY when the user's input does not match any of the other available functions or tools.
+
+        Returns:
+            list[str]: A list of textual status updates resulting from this action.
+        """
+        return ['pass']
+    
+
 
 class MainServer:
     def __init__(self, _main_url: str, _aux_url: str, _main_model: str, _aux_model: str, sys: str = ''):
@@ -282,7 +325,6 @@ class MainServer:
         log_info(f'Aquecendo modelo com: "{user_message.message}"')
         list_tkns = []
         messages_to_send = [self.sysMessage.format(), user_message.format()]
-        # log_info(f'mensagem para aquecimento: "{messages_to_send}"')
         try:
             print(f"Iniciando: {Colors.CYAN}", end='')
             stream = self.stream(messages_to_send)
@@ -302,49 +344,20 @@ class MainServer:
 
     def generate(self, message):
         user_message = UserMessage(message=message, tag=['[Professor]'])
+        called_tool = self.aux_server.generate_response(message=message)
+        if called_tool:
+            self.messages.append(called_tool.format())
+
         self.messages.append(user_message.format())
         list_tkns = []
         
         try:
-            stream_generator = self.stream(self.messages, self.aux_server.get_tool_list())
-            
-            try:
-                first_chunk = next(stream_generator)
-            except StopIteration:
-                log_warning("Modelo não retornou nada no primeiro chunk.")
-                return "..."
+            stream_generator = self.stream(self.messages)
 
-            if first_chunk.message.tool_calls:
-                for tool in first_chunk.message.tool_calls:
-                    tool_name = tool['function']['name']
-
-                    # Executa outras ferramentas
-                    tool_to_call: callable = self.aux_server.get_tool_dict().get(tool_name)
-                    if tool_to_call:
-                        try: 
-                            result_list = tool_to_call(**tool.function.arguments)
-                            tool_obj_list = [Tool(name=tool_name, result=str(content)) for content in result_list]
-                            log_tool(tool_name, str(tool_obj_list))
-                            
-                            if tool_obj_list:
-                                log_info([obj.format() for obj in tool_obj_list])
-                                self.messages.extend([obj.format() for obj in tool_obj_list])
-                        except Exception as e:
-                            log_error(f'Erro na tool {tool_name}: {e}')
-                
-                # Recria o stream (O modelo pode decidir falar algo depois da tool ou não)
-                stream_generator = self.stream(self.messages)
-            else:
-                if first_chunk.message.content:
-                    list_tkns.append(first_chunk.message.content)
-                    print(f"{Colors.CYAN}{first_chunk.message.content}", end='', flush=True)
-
-            # Consome o resto
-            print(f"{Colors.CYAN}", end='') 
             for part in stream_generator:
                 content = part.message.content
                 if part.done:
-                    log_info(f'input tokens: {part.prompt_eval_count}')
+                    log_info(f'\ninput tokens: {part.prompt_eval_count}')
                     log_info(f'output tokens: {part.eval_count}')
 
                 if content:
@@ -375,16 +388,47 @@ class TTS:
         try:
             self.voice = PiperVoice.load(f"controle.onnx")
             self.syn_config = SynthesisConfig(volume=0.5, length_scale=1.3)
-            try:
-                self.device_id = sd.query_devices('CABLE Input (VB-Audio Virtual Cable), Windows WASAPI')['index']
-            except:
-                log_warning("Virtual Cable não achado. Usando saída padrão.")
-                self.device_id = sd.default.device[1]
+            
+            self.device_id = self._get_cable_index('CABLE Input (VB-Audio Virtual')
+            # try:
+            #     # Lista todos os dispositivos e procura CABLE Input com driver MME
+            #     devices = sd.query_devices()
+            #     for i, dev in enumerate(devices):
+            #         # Verifica se é o CABLE Input E se a API é MME (mais estável que WASAPI)
+            #         api_name = sd.query_hostapis(dev['hostapi'])['name']
+            #         if 'CABLE Input (VB-Audio Virtual' in dev['name'] and 'MME' in api_name:
+            #             self.device_id = i
+            #             log_success(f"TTS configurado no dispositivo MME: {dev['name']} (ID: {i})")
+            #             break
+                
+            #     # Se não achar MME específico, tenta busca genérica
+            #     if self.device_id is None:
+            #         self.device_id = sd.query_devices('CABLE Input')['index']
+                    
+            # except Exception as e:
+            #     log_warning(f"Virtual Cable não achado ({e}). Usando saída padrão.")
+            #     self.device_id = sd.default.device[1]
+            # # ---------------------------------------------
 
             self.output_file = f"test{self.num}.wav"
         except Exception as e:
             log_error(f"Erro TTS Init: {e}")
     
+    def _get_cable_index(self, nome_buscado):
+        p = pyaudio.PyAudio()
+        try:
+            for i in range(p.get_device_count()):
+                device_info = p.get_device_info_by_index(i)
+                
+                api_name = p.get_host_api_info_by_index(device_info['hostApi'])['name']
+                
+                if nome_buscado.lower() in device_info['name'].lower() and "MME" in api_name:
+                    return i
+        finally:
+            p.terminate()
+                
+        return None
+
     def generate(self, text):
         if not text or not text.strip():
             log_warning("TTS recebeu texto vazio.")
@@ -395,6 +439,7 @@ class TTS:
                 self.voice.synthesize_wav(text, wav_file, syn_config=self.syn_config)
             
             audio_data, samplerate = sf.read(self.output_file)
+            
             sd.play(audio_data, samplerate=samplerate, device=self.device_id)
             sd.wait()
         except Exception as e:
@@ -405,8 +450,8 @@ class RealTimeSTT:
     def __init__(self, model_size="small", device="auto", language="pt", input_device_index=None, callback=None):
         self.CHUNK = 1024 
         self.FORMAT = pyaudio.paInt16
-        self.CHANNELS = 1
-        self.RATE = 16000
+        self.CHANNELS = 2
+        self.RATE = 48000
         
         self.ENERGY_THRESHOLD = 300
         self.PAUSE_THRESHOLD = 1.3
@@ -498,10 +543,40 @@ class RealTimeSTT:
             except Exception as e:
                 log_error(f"Erro no Consumer: {e}")
 
+    # def _transcribe_buffer(self, buffer_list):
+    #     if not buffer_list: return
+    #     full_audio_data = b"".join(buffer_list)
+    #     audio_array = np.frombuffer(full_audio_data, np.int16).astype(np.float32) / 32768.0
+
+    #     try:
+    #         segments, _ = self.model.transcribe(
+    #             audio_array, language=self.language, beam_size=5,
+    #             vad_filter=True, vad_parameters=dict(min_silence_duration_ms=500)
+    #         )
+    #         text_segment = " ".join([s.text for s in segments]).strip()
+            
+    #         if text_segment:
+    #             log_user(text_segment)
+    #             if self.callback:
+    #                 self.callback(text_segment)
+                    
+    #     except Exception as e:
+    #         log_error(f"Erro Transcrição: {e}")
+
     def _transcribe_buffer(self, buffer_list):
         if not buffer_list: return
+        
         full_audio_data = b"".join(buffer_list)
-        audio_array = np.frombuffer(full_audio_data, np.int16).astype(np.float32) / 32768.0
+        
+        audio_np = np.frombuffer(full_audio_data, dtype=np.int16)
+        
+        if self.CHANNELS == 2:
+            audio_np = audio_np.reshape(-1, 2).mean(axis=1).astype(np.int16)
+            
+        if self.RATE == 48000:
+            audio_np = audio_np[::3]
+            
+        audio_array = audio_np.astype(np.float32) / 32768.0
 
         try:
             segments, _ = self.model.transcribe(
@@ -511,9 +586,11 @@ class RealTimeSTT:
             text_segment = " ".join([s.text for s in segments]).strip()
             
             if text_segment:
-                log_user(text_segment)
+                log_user(f"Você disse: {text_segment}")
                 if self.callback:
                     self.callback(text_segment)
+            else:
+                log_warning("Áudio processado, mas nenhuma palavra reconhecida.")
                     
         except Exception as e:
             log_error(f"Erro Transcrição: {e}")
@@ -527,9 +604,26 @@ class VoiceAssistant:
         self.stt = RealTimeSTT(
             model_size="small", 
             device="cuda", 
-            language="pt", 
+            language="pt",
+            input_device_index=self._get_mic_index("Voicemeeter Out B1"),
             callback=self.process_input
         )
+
+    def _get_mic_index(self, nome_buscado):
+        p = pyaudio.PyAudio()
+        try:
+            for i in range(p.get_device_count()):
+                device_info = p.get_device_info_by_index(i)
+                
+                api_name = p.get_host_api_info_by_index(device_info['hostApi'])['name']
+                
+                if nome_buscado.lower() in device_info['name'].lower() and "MME" in api_name:
+                    log_success(f"Microfone encontrado via MME: {device_info['name']}")
+                    return i
+        finally:
+            p.terminate()
+                
+        return None
 
     def process_input(self, text):
         cmd = text.lower().strip().replace('.', '')
@@ -549,7 +643,6 @@ class VoiceAssistant:
         log_success("Ciclo concluído. Aguardando nova fala...")
 
     def run(self):
-        # ... (pode manter o run igual estava) ...
         log_info('Pulling models (verificando atualizações)...')
         self.main_server.pull()
         log_info('Executando teste inicial de Áudio/LLM...')
