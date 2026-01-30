@@ -1,0 +1,1 @@
+docker exec -w /root/context -it ollama-1 ollama create func -f Modelfile -q f16

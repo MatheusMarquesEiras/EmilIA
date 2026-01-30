@@ -246,7 +246,7 @@ class MainServer:
     def __init__(self, _main_url: str, _aux_url: str, _main_model: str, _aux_model: str, sys: str = ''):
         self.client = Client(host=_main_url)
         self.model = _main_model
-        #self.aux_server = AuxServer(_url=_aux_url, _model=_aux_model)
+        # self.aux_server = AuxServer(_url=_aux_url, _model=_aux_model)
 
         try:
             if not sys:
@@ -338,7 +338,7 @@ class MainServer:
     def generate(self, message: str):
         user_message = UserMessage(message=message, tag='[Professor]')
         
-        # Verifica se precisa usar ferramentas
+        # # Verifica se precisa usar ferramentas
         # called_tool = self.aux_server.generate_response(message=message)
         # log_info(f'called tool: {called_tool}')
         
