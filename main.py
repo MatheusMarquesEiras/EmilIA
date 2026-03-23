@@ -19,6 +19,8 @@ import emoji
 import mss
 from PIL import Image
 
+from datetime import datetime
+
 class Colors:
     RESET = "\033[0m"
     BOLD = "\033[1m"
@@ -317,7 +319,7 @@ class MainServer:
         list_tkns = []
         messages_to_send = [self.sysMessage.format(), user_message.format()]
         try:
-            print(f"Iniciando: {Colors.CYAN}", end='')
+            log_info(f"{Colors.CYAN}Iniciando hora: {datetime.now()}")
             stream = self.stream(messages_to_send)
             for part in stream:
                 if part.done:
@@ -328,6 +330,7 @@ class MainServer:
                     list_tkns.append(content)
                     print(content, end='', flush=True)
             print(f"{Colors.RESET}")
+            log_info(f"{Colors.CYAN}Finalizou hora: {datetime.now()}")
         except Exception as e:
             log_error(f"Erro no teste: {e}")
         log_success('Aquecimento concluído.')
@@ -350,7 +353,8 @@ class MainServer:
         
         try:
             stream_generator = self.stream(self.messages)
-
+            
+            log_info(f"{Colors.CYAN}Iniciando hora: {datetime.now()}")
             for part in stream_generator:
                 content = part.message.content
                 if part.done:
@@ -360,6 +364,7 @@ class MainServer:
                 if content:
                     list_tkns.append(content)
                     print(content, end='', flush=True)
+            log_info(f"{Colors.CYAN}Finalizou hora: {datetime.now()}")
             print(f"{Colors.RESET}\n")
             
             full_text = emoji.replace_emoji(''.join(list_tkns), replace="").strip()
