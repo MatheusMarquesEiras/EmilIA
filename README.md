@@ -34,7 +34,7 @@ Com o `uv` instalado, a configuração é simples:
 
 ```bash
 # Clone o repositório
-git clone <url-do-repositorio>
+git clone https://github.com/MatheusMarquesEiras/EmilIA.git
 cd EmilIA
 
 # Instale as dependências e crie o ambiente virtual
